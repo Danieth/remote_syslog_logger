@@ -6,13 +6,21 @@ class TestRemoteSyslogLogger < Test::Unit::TestCase
     @socket = UDPSocket.new
     @socket.bind('127.0.0.1', @server_port)
   end
-  
+
   def test_logger
     @logger = RemoteSyslogLogger.new('127.0.0.1', @server_port)
     @logger.info "This is a test"
-    
+
     message, addr = *@socket.recvfrom(1024)
     assert_match /This is a test/, message
+  end
+
+  def test_logger_packet_size
+    @logger = RemoteSyslogLogger.new('127.0.0.1', @server_port, packet_size: 1024 * 8)
+    @logger.info "a" * (1024 * 7) + "b"
+
+    message, addr = *@socket.recvfrom(1024 * 8)
+    assert_match /a{#{1024 * 7}}b/, message
   end
 
   def test_logger_multiline

@@ -3,11 +3,15 @@ require 'syslog_protocol'
 
 module RemoteSyslogLogger
   class UdpSender
+    DEFAULT_PACKET_SIZE = 1024
+
     def initialize(remote_hostname, remote_port, options = {})
       @remote_hostname = remote_hostname
       @remote_port     = remote_port
       @whinyerrors     = options[:whinyerrors]
-      
+
+      @packet_size     = options.fetch(:packet_size, DEFAULT_PACKET_SIZE)
+
       @socket = UDPSocket.new
       @packet = SyslogProtocol::Packet.new
 
@@ -15,28 +19,29 @@ module RemoteSyslogLogger
       local_hostname   = 'localhost' if local_hostname.nil? || local_hostname.empty?
       @packet.hostname = local_hostname
 
-      @packet.facility = options[:facility] || 'user'
-      @packet.severity = options[:severity] || 'notice'
-      @packet.tag      = options[:program]  || "#{File.basename($0)}[#{$$}]"
+      @packet.facility = options.fetch(:facility, 'user')
+      @packet.severity = options.fetch(:severity, 'notice')
+      @packet.tag      = options.fetch(:program, "#{File.basename($0)}[#{$$}]")
     end
-    
+
     def transmit(message)
       message.split(/\r?\n/).each do |line|
         begin
           next if line =~ /^\s*$/
           packet = @packet.dup
           packet.content = line
-          @socket.send(packet.assemble, 0, @remote_hostname, @remote_port)
+
+          @socket.send(packet.assemble(@packet_size), 0, @remote_hostname, @remote_port)
         rescue
           $stderr.puts "#{self.class} error: #{$!.class}: #{$!}\nOriginal message: #{line}"
           raise if @whinyerrors
         end
       end
     end
-    
+
     # Make this act a little bit like an `IO` object
     alias_method :write, :transmit
-    
+
     def close
       @socket.close
     end
